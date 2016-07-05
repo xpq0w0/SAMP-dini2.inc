@@ -1,3 +1,8 @@
+#if defined gini_included
+	#endinput
+#endif
+#define gini_included
+
 /*
  * g_ini.inc
  * Version: 1.0 (last updated on 5th July, 2016)
