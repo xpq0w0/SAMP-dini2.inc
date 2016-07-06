@@ -5,7 +5,7 @@
 
 /*
  * g_ini.inc
- * Version: 1.1 (last updated on 5th July, 2016)
+ * Version: 1.1.1 (last updated on 5th July, 2016)
  * By Gammix
  *
  * FUNCTIONS:
