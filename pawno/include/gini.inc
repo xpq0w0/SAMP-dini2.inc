@@ -5,7 +5,7 @@
 
 /*
  * g_ini.inc
- * Version: 1.1.1 (last updated on 5th July, 2016)
+ * Version: 1.1 (last updated on 5th July, 2016)
  * By Gammix
  *
  * FUNCTIONS:
@@ -38,6 +38,10 @@
 
 #if !defined INI_MAX_FIELD_VALUE
 	#define INI_MAX_FIELD_VALUE (256)
+#endif
+
+#if !defined INI_CONVERT_DINI
+	#define INI_CONVERT_DINI
 #endif
 
 static g_INIFileName[INI_MAX_INSTANCES][INI_MAX_FIELD_NAME];
@@ -335,11 +339,11 @@ stock INI_UnSet(const file[], const field[])
 
 	stock dini_Create(const file[])
 	{
-		if (fexist(filename))
+		if (fexist(file))
 			return false;
 
 		new File:handle;
-		handle = fopen(filename,io_write);
+		handle = fopen(file, io_write);
 		if (handle)
 		{
 			fclose(handle);
