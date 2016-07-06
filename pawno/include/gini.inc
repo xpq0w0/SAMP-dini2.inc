@@ -40,10 +40,6 @@
 	#define INI_MAX_FIELD_VALUE (256)
 #endif
 
-#if !defined INI_CONVERT_DINI
-	#define INI_CONVERT_DINI
-#endif
-
 static g_INIFileName[INI_MAX_INSTANCES][INI_MAX_FIELD_NAME];
 static File:g_INIFile[INI_MAX_INSTANCES];
 
