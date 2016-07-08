@@ -5,7 +5,7 @@
 
 /*
  * dini2.inc (IMPROVED)
- * Version: 2.3 (last updated on 8th July, 2016)
+ * Version: 2.3.2 (last updated on 8th July, 2016)
  * By Gammix
  *
  * FUNCTIONS:
@@ -55,7 +55,7 @@ static g_INITimer;
 
 enum E_FILE
 {
-	bool:   E_FILE_OPENED,
+			E_FILE_STATE,
 			E_FILE_NAME[INI_MAX_FILE_NAME],
 			E_FILE_TICK,
 	        E_FILE_FIELDS_COUNT
@@ -157,25 +157,31 @@ forward INI_OnFileTimeout();
 public  INI_OnFileTimeout()
 {
 	static data[INI_MAX_FIELDS * (INI_MAX_FIELD_NAME + INI_MAX_FIELD_VALUE + 1)];
-    data[0] = EOS;
-    
+
 	for (new i; i < INI_MAX_INSTANCES; i++)
 	{
-		if (g_INIFile[i][E_FILE_OPENED])
+		switch (g_INIFile[i][E_FILE_STATE])
 		{
-			if ((GetTickCount() - g_INIFile[i][E_FILE_TICK]) >= INI_FILE_TIMEOUT)
-			{
-				new File:handle = fopen(g_INIFile[i][E_FILE_NAME], io_write);
-				if (handle)
+		    case 1:
+		    	g_INIFile[i][E_FILE_STATE] = 0;
+		    
+		    case 2:
+		    {
+				if ((GetTickCount() - g_INIFile[i][E_FILE_TICK]) >= INI_FILE_TIMEOUT)
 				{
-					for (new x, y = g_INIFile[i][E_FILE_FIELDS_COUNT]; x < y; x++)
-						format(data, sizeof (data), "%s%s=%s\r\n", data, g_INIFileFields[i][x], g_INIFileValues[i][x]);
+					new File:handle = fopen(g_INIFile[i][E_FILE_NAME], io_write);
+					if (handle)
+					{
+	    				data[0] = EOS;
+						for (new x, y = g_INIFile[i][E_FILE_FIELDS_COUNT]; x < y; x++)
+							format(data, sizeof (data), "%s%s=%s\r\n", data, g_INIFileFields[i][x], g_INIFileValues[i][x]);
 
-					fwrite(handle, data);
-					fclose(handle);
+						fwrite(handle, data);
+						fclose(handle);
+					}
+
+					g_INIFile[i][E_FILE_STATE] = 0;
 				}
-
-			    g_INIFile[i][E_FILE_OPENED] = false;
 			}
 		}
 	}
@@ -197,12 +203,12 @@ stock static INI_OpenFile(const file[])
  	new id = -1;
 	for (new i; i < INI_MAX_INSTANCES; i++)
 	{
-		if (!g_INIFile[i][E_FILE_OPENED])
+		if (g_INIFile[i][E_FILE_STATE] == 0)
 		{
 		    if (id == -1)
 		    	id = i;
 		}
-		else if (!strcmp(g_INIFile[i][E_FILE_NAME], file))
+  		else if (!strcmp(g_INIFile[i][E_FILE_NAME], file))
 	    	return i;
 	}
 
@@ -212,7 +218,7 @@ stock static INI_OpenFile(const file[])
 	new File:handle = fopen(file, io_readwrite);
 	if (!handle)
 	    return -1;
-	    
+
     g_INIFile[id][E_FILE_FIELDS_COUNT] = 0;
 
 	new pos;
@@ -237,7 +243,7 @@ stock static INI_OpenFile(const file[])
 
     format(g_INIFile[id][E_FILE_NAME], INI_MAX_FILE_NAME, file);
     g_INIFile[id][E_FILE_TICK] = GetTickCount();
-    g_INIFile[id][E_FILE_OPENED] = true;
+    g_INIFile[id][E_FILE_STATE] = 0;
 
 	fclose(handle);
 	return id;
@@ -267,6 +273,8 @@ stock dini_Set(const file[], const field[], const value[])
 	    if (!strcmp(g_INIFileFields[id][i], field))
     	{
 			format(g_INIFileValues[id][i], INI_MAX_FIELD_VALUE, value);
+
+			g_INIFile[id][E_FILE_STATE] = 2;
 	    	return 1;
 		}
 	}
@@ -277,6 +285,8 @@ stock dini_Set(const file[], const field[], const value[])
 		format(g_INIFileValues[id][count], INI_MAX_FIELD_VALUE, value);
 
 		g_INIFile[id][E_FILE_FIELDS_COUNT]++;
+		
+		g_INIFile[id][E_FILE_STATE] = 2;
   		return 1;
 	}
 
@@ -298,6 +308,8 @@ stock dini_IntSet(const file[], const field[], value)
 	    if (!strcmp(g_INIFileFields[id][i], field))
     	{
 			valstr(g_INIFileValues[id][i], value);
+
+			g_INIFile[id][E_FILE_STATE] = 2;
 	    	return 1;
 		}
 	}
@@ -308,6 +320,8 @@ stock dini_IntSet(const file[], const field[], value)
 		valstr(g_INIFileValues[id][count], value);
 
 		g_INIFile[id][E_FILE_FIELDS_COUNT]++;
+
+		g_INIFile[id][E_FILE_STATE] = 2;
   		return 1;
 	}
 
@@ -329,6 +343,8 @@ stock dini_FloatSet(const file[], const field[], Float:value)
 	    if (!strcmp(g_INIFileFields[id][i], field))
     	{
 			format(g_INIFileValues[id][i], INI_MAX_FIELD_VALUE, "%f", value);
+
+			g_INIFile[id][E_FILE_STATE] = 2;
 	    	return 1;
 		}
 	}
@@ -339,6 +355,8 @@ stock dini_FloatSet(const file[], const field[], Float:value)
 		format(g_INIFileValues[id][count], INI_MAX_FIELD_VALUE, "%f", value);
 
 		g_INIFile[id][E_FILE_FIELDS_COUNT]++;
+
+		g_INIFile[id][E_FILE_STATE] = 2;
   		return 1;
 	}
 
@@ -360,6 +378,8 @@ stock dini_BoolSet(const file[], const field[], bool:value)
 	    if (!strcmp(g_INIFileFields[id][i], field))
     	{
 			valstr(g_INIFileValues[id][i], _:value);
+
+			g_INIFile[id][E_FILE_STATE] = 2;
 	    	return 1;
 		}
 	}
@@ -370,6 +390,8 @@ stock dini_BoolSet(const file[], const field[], bool:value)
 		valstr(g_INIFileValues[id][count], _:value);
 
 		g_INIFile[id][E_FILE_FIELDS_COUNT]++;
+
+		g_INIFile[id][E_FILE_STATE] = 2;
   		return 1;
 	}
 
@@ -503,36 +525,6 @@ stock dini_IsSet(const file[], const field[])
 	return 0;
 }
 
-stock dini_Timeout(const file[])
-{
-	for (new i; i < INI_MAX_INSTANCES; i++)
-	{
-		if (g_INIFile[i][E_FILE_OPENED])
-		{
-			if (!strcmp(g_INIFile[i][E_FILE_NAME], file))
-	    	{
-	    	    new File:handle = fopen(g_INIFile[i][E_FILE_NAME], io_write);
-				if (handle)
-				{
-					static data[INI_MAX_FIELDS * (INI_MAX_FIELD_NAME + INI_MAX_FIELD_VALUE + 1)];
-    				data[0] = EOS;
-    				
-					for (new x, y = g_INIFile[i][E_FILE_FIELDS_COUNT]; x < y; x++)
-						format(data, sizeof (data), "%s%s=%s\r\n", data, g_INIFileFields[i][x], g_INIFileValues[i][x]);
-
-					fwrite(handle, data);
-					fclose(handle);
-				}
-
-			    g_INIFile[i][E_FILE_OPENED] = false;
-				return 1;
-			}
-		}
-	}
-
-	return 0;
-}
-
 stock DINI_fcopytextfile(const file[], const newname[])
 {
 	new File:handles[2];
@@ -560,4 +552,43 @@ stock DINI_fcopytextfile(const file[], const newname[])
 	fclose(handles[1]);
 
 	return 1;
+}
+
+stock dini_Timeout(const file[])
+{
+	for (new i; i < INI_MAX_INSTANCES; i++)
+	{
+		switch (g_INIFile[i][E_FILE_STATE])
+		{
+		    case 1:
+		    {
+				if (strcmp(g_INIFile[i][E_FILE_NAME], file))
+		    	    continue;
+
+		    	g_INIFile[i][E_FILE_STATE] = 0;
+			}
+
+		    case 2:
+		    {
+				if (strcmp(g_INIFile[i][E_FILE_NAME], file))
+		    	    continue;
+
+				new File:handle = fopen(g_INIFile[i][E_FILE_NAME], io_write);
+				if (handle)
+				{
+				    static data[INI_MAX_FIELDS * (INI_MAX_FIELD_NAME + INI_MAX_FIELD_VALUE + 1)];
+					data[0] = EOS;
+
+					for (new x, y = g_INIFile[i][E_FILE_FIELDS_COUNT]; x < y; x++)
+						format(data, sizeof (data), "%s%s=%s\r\n", data, g_INIFileFields[i][x], g_INIFileValues[i][x]);
+
+					fwrite(handle, data);
+					fclose(handle);
+   			 	}
+				g_INIFile[i][E_FILE_STATE] = 0;
+			}
+		}
+	}
+
+	return 0;
 }
