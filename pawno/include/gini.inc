@@ -168,7 +168,7 @@ public  INI_OnFileTimeout()
 				if ((GetTickCount() - g_INIFile[i][E_FILE_TICK]) >= INI_FILE_TIMEOUT)
 					g_INIFile[i][E_FILE_STATE] = 0;
 			}
-
+			
 		    case 2:
 		    {
 				if ((GetTickCount() - g_INIFile[i][E_FILE_TICK]) >= INI_FILE_TIMEOUT)
@@ -592,7 +592,7 @@ stock dini_Timeout(const file[])
 					fwrite(handle, data);
 					fclose(handle);
    			 	}
-
+   			 	
 				g_INIFile[i][E_FILE_STATE] = 0;
 		    	return 1;
 			}
