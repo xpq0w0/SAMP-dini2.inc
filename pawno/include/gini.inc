@@ -22,8 +22,9 @@
    native bool:dini_Bool(const file[], const field[]);
    native dini_UnSet(const file[], const field[]);
    native dini_IsSet(const file[], const field[]);
-   native dini_Timeout(const file[]);
    native DINI_fcopytextfile(const file[], const newname[]);
+   native _
+   native dini_Timeout(const file[]);
  *
  */
 
@@ -163,8 +164,11 @@ public  INI_OnFileTimeout()
 		switch (g_INIFile[i][E_FILE_STATE])
 		{
 		    case 1:
-		    	g_INIFile[i][E_FILE_STATE] = 0;
-		    
+		    {
+				if ((GetTickCount() - g_INIFile[i][E_FILE_TICK]) >= INI_FILE_TIMEOUT)
+					g_INIFile[i][E_FILE_STATE] = 0;
+			}
+
 		    case 2:
 		    {
 				if ((GetTickCount() - g_INIFile[i][E_FILE_TICK]) >= INI_FILE_TIMEOUT)
@@ -243,7 +247,7 @@ stock static INI_OpenFile(const file[])
 
     format(g_INIFile[id][E_FILE_NAME], INI_MAX_FILE_NAME, file);
     g_INIFile[id][E_FILE_TICK] = GetTickCount();
-    g_INIFile[id][E_FILE_STATE] = 0;
+    g_INIFile[id][E_FILE_STATE] = 1;
 
 	fclose(handle);
 	return id;
@@ -285,7 +289,7 @@ stock dini_Set(const file[], const field[], const value[])
 		format(g_INIFileValues[id][count], INI_MAX_FIELD_VALUE, value);
 
 		g_INIFile[id][E_FILE_FIELDS_COUNT]++;
-		
+
 		g_INIFile[id][E_FILE_STATE] = 2;
   		return 1;
 	}
@@ -495,6 +499,8 @@ stock dini_UnSet(const file[], const field[])
 	            g_INIFileValues[id][i][0] = EOS;
 
 	            g_INIFile[id][E_FILE_FIELDS_COUNT]--;
+
+	            g_INIFile[id][E_FILE_STATE] = 2;
 		    }
 		    else
 		    {
@@ -566,6 +572,7 @@ stock dini_Timeout(const file[])
 		    	    continue;
 
 		    	g_INIFile[i][E_FILE_STATE] = 0;
+		    	return 1;
 			}
 
 		    case 2:
@@ -585,7 +592,9 @@ stock dini_Timeout(const file[])
 					fwrite(handle, data);
 					fclose(handle);
    			 	}
+
 				g_INIFile[i][E_FILE_STATE] = 0;
+		    	return 1;
 			}
 		}
 	}
