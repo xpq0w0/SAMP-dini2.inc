@@ -1,21 +1,29 @@
-#if defined gini_included
+#if defined dini2_included
 	#endinput
 #endif
-#define gini_included
+#define dini2_included
 
 /*
- * g_ini.inc
- * Version: 1.2 (last updated on 7th July, 2016)
+ * dini2.inc (IMPROVED)
+ * Version: 2.3 (last updated on 8th July, 2016)
  * By Gammix
  *
  * FUNCTIONS:
- * native INI_Get(const file[], const field[], dest[], maxlength = sizeof (dest));
- * native INI_GetInt(const file[], const field[]);
- * native Float:INI_GetFloat(const file[], const field[]);
- * native INI_Set(const file[], const field[], const value[]);
- * native INI_SetInt(const file[], const field[], value);
- * native INI_SetFloat(const file[], const field[], Float:value);
- * native INI_UnSet(const file[], const field[]);
+   native dini_Exists(const file[]);
+   native dini_Remove(const file[]);
+   native dini_Create(const file[]);
+   native dini_Set(const file[], const field[], const value[]);
+   native dini_IntSet(const file[], const field[], value);
+   native dini_FloatSet(const file[], const field[], Float:value);
+   native dini_BoolSet(const file[], const field[], bool:value);
+   native dini_Get(const file[], const field[]);
+   native dini_Int(const file[], const field[]);
+   native Float:dini_Float(const file[], const field[]);
+   native bool:dini_Bool(const file[], const field[]);
+   native dini_UnSet(const file[], const field[]);
+   native dini_IsSet(const file[], const field[]);
+   native dini_Timeout(const file[]);
+   native DINI_fcopytextfile(const file[], const newname[]);
  *
  */
 
@@ -25,6 +33,10 @@
 
 #if !defined INI_MAX_INSTANCES
 	#define INI_MAX_INSTANCES (64)
+#endif
+
+#if !defined INI_MAX_FILE_NAME
+	#define INI_MAX_FILE_NAME (64)
 #endif
 
 #if !defined INI_MAX_FIELDS
@@ -41,14 +53,17 @@
 
 static g_INITimer;
 
-static g_INIFileName[INI_MAX_INSTANCES][INI_MAX_FIELD_NAME];
-static File:g_INIFile[INI_MAX_INSTANCES];
+enum E_FILE
+{
+	bool:   E_FILE_OPENED,
+			E_FILE_NAME[INI_MAX_FILE_NAME],
+			E_FILE_TICK,
+	        E_FILE_FIELDS_COUNT
+};
+static g_INIFile[INI_MAX_INSTANCES][E_FILE];
 
-static g_INITick[INI_MAX_INSTANCES];
-
-static g_INIFieldsCount[INI_MAX_INSTANCES];
-static g_INIFields[INI_MAX_INSTANCES][INI_MAX_FIELDS][INI_MAX_FIELD_NAME char];
-static g_INIValues[INI_MAX_INSTANCES][INI_MAX_FIELDS][INI_MAX_FIELD_VALUE char];
+static g_INIFileFields[INI_MAX_INSTANCES][INI_MAX_FIELDS][INI_MAX_FIELD_NAME];
+static g_INIFileValues[INI_MAX_INSTANCES][INI_MAX_FIELDS][INI_MAX_FIELD_VALUE];
 
 #if ! defined FILTERSCRIPT
 	public OnGameModeInit()
@@ -141,82 +156,29 @@ static g_INIValues[INI_MAX_INSTANCES][INI_MAX_FIELDS][INI_MAX_FIELD_VALUE char];
 forward INI_OnFileTimeout();
 public  INI_OnFileTimeout()
 {
+	static data[INI_MAX_FIELDS * (INI_MAX_FIELD_NAME + INI_MAX_FIELD_VALUE + 1)];
+    data[0] = EOS;
+    
 	for (new i; i < INI_MAX_INSTANCES; i++)
 	{
-		if (g_INIFileName[i][0])
+		if (g_INIFile[i][E_FILE_OPENED])
 		{
-			if ((GetTickCount() - g_INITick[i]) >= INI_FILE_TIMEOUT)
+			if ((GetTickCount() - g_INIFile[i][E_FILE_TICK]) >= INI_FILE_TIMEOUT)
 			{
-				g_INIFile[i] = fopen(g_INIFileName[i], io_write);
-				if (g_INIFile[i])
+				new File:handle = fopen(g_INIFile[i][E_FILE_NAME], io_write);
+				if (handle)
 				{
-					new field[INI_MAX_FIELD_VALUE];
-					new value[INI_MAX_FIELD_VALUE];
-					new data[INI_MAX_FIELD_NAME + INI_MAX_FIELD_VALUE];
-					for (new x, y = g_INIFieldsCount[i]; x < y; x++)
-					{
-					    strunpack(field, g_INIFields[i][x]);
-					    strunpack(value, g_INIValues[i][x]);
-					    format(data, sizeof (data), "%s=%s\r\n", field, value);
-					    fwrite(g_INIFile[i], data);
-					}
-					
-					fclose(g_INIFile[i]);
+					for (new x, y = g_INIFile[i][E_FILE_FIELDS_COUNT]; x < y; x++)
+						format(data, sizeof (data), "%s%s=%s\r\n", data, g_INIFileFields[i][x], g_INIFileValues[i][x]);
+
+					fwrite(handle, data);
+					fclose(handle);
 				}
-				
-			    g_INITick[i] = 0;
-			    g_INIFileName[i][0] = EOS;
+
+			    g_INIFile[i][E_FILE_OPENED] = false;
 			}
 		}
 	}
-}
-
-stock static INI_OpenFile(const file[])
-{
-	new id = -1;
-	for (new i; i < INI_MAX_INSTANCES; i++)
-	{
-	    if (g_INIFileName[i][0] && !strcmp(g_INIFileName[i], file))
-	    	return i;
-
-		if (id == -1 && !g_INIFileName[i][0])
-		    id = i;
-	}
-		
-	if (id == -1)
-	    return -1;
-
-	g_INIFile[id] = fopen(file, io_readwrite);
-	if (!g_INIFile[id])
-	    return -1;
-
-    strcat((g_INIFileName[id][0] = EOS, g_INIFileName[id]), file);
-
-	g_INITick[id] = GetTickCount();
-		
-    g_INIFieldsCount[id] = 0;
-
-	new pos;
-	new data[INI_MAX_FIELD_NAME + INI_MAX_FIELD_VALUE];
-	new extract[INI_MAX_FIELD_VALUE];
-	while (g_INIFieldsCount[id] < INI_MAX_FIELDS && fread(g_INIFile[id], data))
-	{
-		INI_StripLine(data);
-
-		pos = strfind(data, "=", false);
-		if (pos == -1)
-			continue;
-
-		strmid(extract, data, 0, pos);
-		strpack(g_INIFields[id][g_INIFieldsCount[id]], extract);
-		strpack(g_INIValues[id][g_INIFieldsCount[id]], data[pos + 1]);
-
-		g_INIFieldsCount[id]++;
-	}
-		
-	fclose(g_INIFile[id]);
-
-	return id;
 }
 
 stock static INI_StripLine(string[])
@@ -230,191 +192,55 @@ stock static INI_StripLine(string[])
 		string[l - 1] = '\0';
 }
 
-stock INI_Get(const file[], const field[], dest[], maxlength = sizeof (dest))
+stock static INI_OpenFile(const file[])
 {
-	new id = INI_OpenFile(file);
-	if (id == -1)
-	    return 0;
-
-	new extract[INI_MAX_FIELD_VALUE];
-	for (new i, j = g_INIFieldsCount[id]; i < j; i++)
+ 	new id = -1;
+	for (new i; i < INI_MAX_INSTANCES; i++)
 	{
-	    strunpack(extract, g_INIFields[id][i]);
-	    if (field[0] && strcmp(extract, field))
-	        continue;
-
-	    strunpack(dest, g_INIValues[id][i], maxlength);
-	    return 1;
+		if (!g_INIFile[i][E_FILE_OPENED])
+		{
+		    if (id == -1)
+		    	id = i;
+		}
+		else if (!strcmp(g_INIFile[i][E_FILE_NAME], file))
+	    	return i;
 	}
 
-	return 0;
-}
-
-stock INI_GetInt(const file[], const field[])
-{
-	new id = INI_OpenFile(file);
 	if (id == -1)
 	    return -1;
 
-	new extract[INI_MAX_FIELD_VALUE];
-	for (new i, j = g_INIFieldsCount[id]; i < j; i++)
+	new File:handle = fopen(file, io_readwrite);
+	if (!handle)
+	    return -1;
+	    
+    g_INIFile[id][E_FILE_FIELDS_COUNT] = 0;
+
+	new pos;
+	new count;
+	new data[INI_MAX_FIELD_NAME + INI_MAX_FIELD_VALUE];
+	new fieldname[INI_MAX_FIELD_NAME];
+	while (count < INI_MAX_FIELDS && fread(handle, data))
 	{
-	    strunpack(extract, g_INIFields[id][i]);
-	    if (field[0] && strcmp(extract, field))
-	        continue;
+		INI_StripLine(data);
 
-	    strunpack(extract, g_INIValues[id][i]);
-	    return strval(extract);
-	}
-
-	return -1;
-}
-
-stock Float:INI_GetFloat(const file[], const field[])
-{
-	new id = INI_OpenFile(file);
-	if (id == -1)
-	    return -1.0;
-
-	new extract[INI_MAX_FIELD_VALUE];
-	for (new i, j = g_INIFieldsCount[id]; i < j; i++)
-	{
-	    strunpack(extract, g_INIFields[id][i]);
-	    if (field[0] && strcmp(extract, field))
-	        continue;
-
-	    strunpack(extract, g_INIValues[id][i]);
-	    return floatstr(extract);
-	}
-
-	return -1.0;
-}
-
-stock INI_Set(const file[], const field[], const value[])
-{
-	new id = INI_OpenFile(file);
-	if (id == -1)
-	    return 0;
-
-	new extract[INI_MAX_FIELD_VALUE];
-	for (new i, j = g_INIFieldsCount[id]; i < j; i++)
-	{
-	    strunpack(extract, g_INIFields[id][i]);
-	    if (field[0] && strcmp(extract, field))
-	    	continue;
-
-	    strpack(g_INIValues[id][i], value);
-	    return 1;
-	}
-
-	if (g_INIFieldsCount[id] < INI_MAX_FIELDS)
-	{
-		strpack(g_INIFields[id][g_INIFieldsCount[id]], field);
-		strpack(g_INIValues[id][g_INIFieldsCount[id]], value);
-		g_INIFieldsCount[id]++;
-  		return 1;
-	}
-
-	return 0;
-}
-
-stock INI_SetInt(const file[], const field[], value)
-{
-	new id = INI_OpenFile(file);
-	if (id == -1)
-	    return 0;
-
-	new extract[INI_MAX_FIELD_VALUE];
-	for (new i, j = g_INIFieldsCount[id]; i < j; i++)
-	{
-	    strunpack(extract, g_INIFields[id][i]);
-	    if (field[0] && strcmp(extract, field))
+		pos = strfind(data, "=", false);
+		if (pos == -1)
 			continue;
 
-		valstr(extract, value);
-	    strpack(g_INIValues[id][i], extract);
-	    return 1;
+		strmid(fieldname, data, 0, pos);
+		format(g_INIFileFields[id][count], INI_MAX_FIELD_NAME, fieldname);
+		format(g_INIFileValues[id][count], INI_MAX_FIELD_VALUE, data[pos + 1]);
+
+		count++;
 	}
+	g_INIFile[id][E_FILE_FIELDS_COUNT] = count;
 
-	if (g_INIFieldsCount[id] < INI_MAX_FIELDS)
-	{
-		strpack(g_INIFields[id][g_INIFieldsCount[id]], field);
-		valstr(extract, value);
-		strpack(g_INIValues[id][g_INIFieldsCount[id]], extract);
-		g_INIFieldsCount[id]++;
-  		return 1;
-	}
+    format(g_INIFile[id][E_FILE_NAME], INI_MAX_FILE_NAME, file);
+    g_INIFile[id][E_FILE_TICK] = GetTickCount();
+    g_INIFile[id][E_FILE_OPENED] = true;
 
-	return 0;
-}
-
-stock INI_SetFloat(const file[], const field[], Float:value)
-{
-	new id = INI_OpenFile(file);
-	if (id == -1)
-	    return 0;
-
-	new extract[INI_MAX_FIELD_VALUE];
-	for (new i, j = g_INIFieldsCount[id]; i < j; i++)
-	{
-	    strunpack(extract, g_INIFields[id][i]);
-	    if (field[0] && strcmp(extract, field))
-	    	continue;
-
-		format(extract, sizeof (extract), "%f", value);
-	    strpack(g_INIValues[id][i], extract);
-	    return 1;
-	}
-
-	if (g_INIFieldsCount[id] < INI_MAX_FIELDS)
-	{
-		strpack(g_INIFields[id][g_INIFieldsCount[id]], field);
-		format(extract, sizeof (extract), "%f", value);
-		strpack(g_INIValues[id][g_INIFieldsCount[id]], extract);
-		g_INIFieldsCount[id]++;
-  		return 1;
-	}
-
-	return 0;
-}
-
-stock INI_UnSet(const file[], const field[])
-{
-	new id = INI_OpenFile(file);
-	if (id == -1)
-	    return 0;
-
-	new bool:shift;
-	new extract[INI_MAX_FIELD_VALUE];
-	for (new i, j = g_INIFieldsCount[id]; i < j; i++)
-	{
-	    if (shift)
-	    {
-	        g_INIFields[id][i - 1] = g_INIFields[id][i];
-	        g_INIFields[id][i][0] = EOS;
-	        g_INIValues[id][i - 1] = g_INIValues[id][i];
-	       	g_INIValues[id][i][0] = EOS;
-	    }
-	    else
-	    {
-		    strunpack(extract, g_INIFields[id][i]);
-		    if (field[0] && strcmp(extract, field))
-		        continue;
-
-	        g_INIFields[id][i][0] = EOS;
-	        g_INIValues[id][i][0] = EOS;
-
-			shift = true;
-		}
-	}
-
-	if (shift)
-	{
-		g_INIFieldsCount[id]--;
-		return 1;
-	}
-
-	return 0;
+	fclose(handle);
+	return id;
 }
 
 stock dini_Exists(const file[])
@@ -424,56 +250,288 @@ stock dini_Remove(const file[])
 	return fremove(file);
 
 stock dini_Create(const file[])
-{
-	if (fexist(file))
-		return false;
-
-	new File:handle;
-	handle = fopen(file, io_write);
-	if (handle)
-	{
-		fclose(handle);
-		return true;
-	}
-	return false;
-}
+	return ((INI_OpenFile(file) < 0) ? (0) : (1));
 
 stock dini_Set(const file[], const field[], const value[])
-	return INI_Set(file, field, value);
+{
+	new id = INI_OpenFile(file);
+	if (id == -1)
+	    return 0;
+
+	if (!field[0])
+	    return 0;
+
+	new count = g_INIFile[id][E_FILE_FIELDS_COUNT];
+	for (new i; i < count; i++)
+	{
+	    if (!strcmp(g_INIFileFields[id][i], field))
+    	{
+			format(g_INIFileValues[id][i], INI_MAX_FIELD_VALUE, value);
+	    	return 1;
+		}
+	}
+
+	if (count < INI_MAX_FIELDS)
+	{
+		format(g_INIFileFields[id][count], INI_MAX_FIELD_NAME, field);
+		format(g_INIFileValues[id][count], INI_MAX_FIELD_VALUE, value);
+
+		g_INIFile[id][E_FILE_FIELDS_COUNT]++;
+  		return 1;
+	}
+
+	return 0;
+}
 
 stock dini_IntSet(const file[], const field[], value)
-	return INI_SetInt(file, field, value);
+{
+	new id = INI_OpenFile(file);
+	if (id == -1)
+	    return 0;
+
+	if (!field[0])
+	    return 0;
+
+	new count = g_INIFile[id][E_FILE_FIELDS_COUNT];
+	for (new i; i < count; i++)
+	{
+	    if (!strcmp(g_INIFileFields[id][i], field))
+    	{
+			valstr(g_INIFileValues[id][i], value);
+	    	return 1;
+		}
+	}
+
+	if (count < INI_MAX_FIELDS)
+	{
+		format(g_INIFileFields[id][count], INI_MAX_FIELD_NAME, field);
+		valstr(g_INIFileValues[id][count], value);
+
+		g_INIFile[id][E_FILE_FIELDS_COUNT]++;
+  		return 1;
+	}
+
+	return 0;
+}
 
 stock dini_FloatSet(const file[], const field[], Float:value)
-	return INI_SetFloat(file, field, value);
+{
+	new id = INI_OpenFile(file);
+	if (id == -1)
+	    return 0;
+
+	if (!field[0])
+	    return 0;
+
+	new count = g_INIFile[id][E_FILE_FIELDS_COUNT];
+	for (new i; i < count; i++)
+	{
+	    if (!strcmp(g_INIFileFields[id][i], field))
+    	{
+			format(g_INIFileValues[id][i], INI_MAX_FIELD_VALUE, "%f", value);
+	    	return 1;
+		}
+	}
+
+	if (count < INI_MAX_FIELDS)
+	{
+		format(g_INIFileFields[id][count], INI_MAX_FIELD_NAME, field);
+		format(g_INIFileValues[id][count], INI_MAX_FIELD_VALUE, "%f", value);
+
+		g_INIFile[id][E_FILE_FIELDS_COUNT]++;
+  		return 1;
+	}
+
+	return 0;
+}
 
 stock dini_BoolSet(const file[], const field[], bool:value)
-	return INI_SetInt(file, field, _:value);
+{
+	new id = INI_OpenFile(file);
+	if (id == -1)
+	    return 0;
+
+	if (!field[0])
+	    return 0;
+
+	new count = g_INIFile[id][E_FILE_FIELDS_COUNT];
+	for (new i; i < count; i++)
+	{
+	    if (!strcmp(g_INIFileFields[id][i], field))
+    	{
+			valstr(g_INIFileValues[id][i], _:value);
+	    	return 1;
+		}
+	}
+
+	if (count < INI_MAX_FIELDS)
+	{
+		format(g_INIFileFields[id][count], INI_MAX_FIELD_NAME, field);
+		valstr(g_INIFileValues[id][count], _:value);
+
+		g_INIFile[id][E_FILE_FIELDS_COUNT]++;
+  		return 1;
+	}
+
+	return 0;
+}
 
 stock dini_Get(const file[], const field[])
 {
 	new ret[INI_MAX_FIELD_VALUE];
-	INI_Get(file, field, ret);
+
+	new id = INI_OpenFile(file);
+	if (id == -1)
+	    return ret;
+
+	if (!field[0])
+	    return ret;
+
+	for (new i, j = g_INIFile[id][E_FILE_FIELDS_COUNT]; i < j; i++)
+	{
+	    if (!strcmp(g_INIFileFields[id][i], field))
+			return g_INIFileValues[id][i];
+	}
+
 	return ret;
 }
 
 stock dini_Int(const file[], const field[])
-	return INI_GetInt(file, field);
+{
+	new id = INI_OpenFile(file);
+	if (id == -1)
+	    return -1;
+
+	if (!field[0])
+	    return -1;
+
+	for (new i, j = g_INIFile[id][E_FILE_FIELDS_COUNT]; i < j; i++)
+	{
+	    if (!strcmp(g_INIFileFields[id][i], field))
+			return strval(g_INIFileValues[id][i]);
+	}
+
+	return -1;
+}
 
 stock Float:dini_Float(const file[], const field[])
-	return INI_GetFloat(file, field);
+{
+	new id = INI_OpenFile(file);
+	if (id == -1)
+	    return -1.0;
+
+	if (!field[0])
+	    return -1.0;
+
+	for (new i, j = g_INIFile[id][E_FILE_FIELDS_COUNT]; i < j; i++)
+	{
+	    if (!strcmp(g_INIFileFields[id][i], field))
+			return floatstr(g_INIFileValues[id][i]);
+	}
+
+	return -1.0;
+}
 
 stock bool:dini_Bool(const file[], const field[])
-	return bool:INI_GetInt(file, field);
+{
+	new id = INI_OpenFile(file);
+	if (id == -1)
+	    return false;
+
+	if (!field[0])
+	    return false;
+
+	for (new i, j = g_INIFile[id][E_FILE_FIELDS_COUNT]; i < j; i++)
+	{
+	    if (!strcmp(g_INIFileFields[id][i], field))
+			return bool:strval(g_INIFileValues[id][i]);
+	}
+
+	return false;
+}
 
 stock dini_UnSet(const file[], const field[])
-	return INI_UnSet(file, field);
+{
+	new id = INI_OpenFile(file);
+	if (id == -1)
+	    return 0;
+
+	if (!field[0])
+	    return 0;
+
+	new bool:shift;
+	for (new i, j = g_INIFile[id][E_FILE_FIELDS_COUNT]; i < j; i++)
+	{
+	    if (!strcmp(g_INIFileFields[id][i], field))
+            shift = true;
+
+		if (shift)
+		{
+		    if (i == (j - 1))
+		    {
+	            g_INIFileFields[id][i][0] = EOS;
+	            g_INIFileValues[id][i][0] = EOS;
+
+	            g_INIFile[id][E_FILE_FIELDS_COUNT]--;
+		    }
+		    else
+		    {
+	            g_INIFileFields[id][i] = g_INIFileFields[id][i + 1];
+	            g_INIFileValues[id][i] = g_INIFileValues[id][i + 1];
+			}
+		}
+	}
+
+	return 0;
+}
 
 stock dini_IsSet(const file[], const field[])
-	return fmatch(file, field, 0);
+{
+	new id = INI_OpenFile(file);
+	if (id == -1)
+	    return 0;
 
-stock DINI_StripNewLine(string[])
-	return INI_StripLine(string);
+	if (!field[0])
+	    return 0;
+
+	for (new i, j = g_INIFile[id][E_FILE_FIELDS_COUNT]; i < j; i++)
+	{
+	    if (!strcmp(g_INIFileFields[id][i], field))
+			return 1;
+	}
+
+	return 0;
+}
+
+stock dini_Timeout(const file[])
+{
+	for (new i; i < INI_MAX_INSTANCES; i++)
+	{
+		if (g_INIFile[i][E_FILE_OPENED])
+		{
+			if (!strcmp(g_INIFile[i][E_FILE_NAME], file))
+	    	{
+	    	    new File:handle = fopen(g_INIFile[i][E_FILE_NAME], io_write);
+				if (handle)
+				{
+					static data[INI_MAX_FIELDS * (INI_MAX_FIELD_NAME + INI_MAX_FIELD_VALUE + 1)];
+    				data[0] = EOS;
+    				
+					for (new x, y = g_INIFile[i][E_FILE_FIELDS_COUNT]; x < y; x++)
+						format(data, sizeof (data), "%s%s=%s\r\n", data, g_INIFileFields[i][x], g_INIFileValues[i][x]);
+
+					fwrite(handle, data);
+					fclose(handle);
+				}
+
+			    g_INIFile[i][E_FILE_OPENED] = false;
+				return 1;
+			}
+		}
+	}
+
+	return 0;
+}
 
 stock DINI_fcopytextfile(const file[], const newname[])
 {
