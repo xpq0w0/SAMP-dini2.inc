@@ -1,0 +1,9 @@
+{
+	"user": "zkelo",
+	"repo": "SAMP-dini2.inc",
+	"entry": "test.pwn",
+	"output": "test.amx",
+	"dependencies": [
+		"sampctl/samp-stdlib"
+	]
+}
